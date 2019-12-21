@@ -1,0 +1,10 @@
+#  To use the direct_transitions functionality of the phc-k8 driver,
+#  uncomment the next line:
+#options phc-k8 direct_transitions=1
+
+#  We want to use the phc-k8 driver instead of the unmodified powernow-k8 driver
+install powernow-k8 /sbin/modprobe phc-k8 || { /sbin/modprobe --ignore-install powernow-k8; }
+
+#  The next two lines prevent the kernel from crashing:
+remove powernow-k8 /sbin/modprobe -r cpufreq_stats && { /sbin/modprobe --ignore-remove -r powernow-k8 ; }
+remove phc-k8 /sbin/modprobe -r cpufreq_stats && { /sbin/modprobe --ignore-remove -r phc-k8 ; }

@@ -1,0 +1,43 @@
+v0.4.6:
+-------
+- Merged changes from powernow-k8 up to kernel version 3.18.
+- Removed support for 2.6 kernels
+v0.4.5:
+-------
+- Merged changes from powernow-k8 up to kernel version 3.13.
+- Keep K10 support even though it has been moved to acpi-cpufreq.
+
+v0.4.4:
+-------
+- Merged changes for powernow-k8 from up to kernel version 2.6.38.
+- Add initial AMD Family 10h and 11h support (Phenom and Turion X2).
+- Add initial support for AMD Core Performance boost.
+
+v0.4.3:
+-------
+- Merged changes for powernow-k8 from up to kernel version 2.6.36.
+- Minor fixes in dkms.conf, Makefile.
+
+v0.4.2:
+-------
+- Merged changes for powernow-k8 from up to 2.6.32, there's better support for the AMD Neo now.
+- Fixed Makefile bug, where the make command would hang forever.
+- Enhanced Makefile, with changes from LxP.
+- Added support for kernel 2.6.24 (Ubuntu 8.04 LTS kernel version).
+
+v0.4.1:
+-------
+- Merged changes for powernow-k8 from 2.6.29 & 2.6.30, while trying to keep compatible with 2.6.27/2.6.28.
+- Fixed a bug where an invalid, too high fid could cause the driver to stop working.
+- Added support to override the maximum FID for Black Edition processors. Use "be_maxfid" to override (EXPERIMENTAL).
+- Updated module maintainer, I missed that spot until recently...
+
+v0.4.0:
+-------
+- Merged changes for powernow-k8 from 2.6.27/2.6.28.
+- Always enable at least 1000MHz as lowest frequency in direct_transitions mode. 
+- Tweaked some code.
+
+v0.0.92:
+-------
+- First public release

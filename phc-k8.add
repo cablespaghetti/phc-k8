@@ -1,0 +1,8 @@
+#!/bin/sh
+[ -e /etc/modprobe.d/phc-k8.conf ] && exit 0
+umask 022
+echo "\
+#  To use the direct_transitions functionality of the phc-k8 driver,
+#  uncomment the next line:
+#options phc-k8 direct_transitions=1
+" > /etc/modprobe.d/phc-k8.conf

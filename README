@@ -1,0 +1,144 @@
+This document describes the usage of the PHC-K8 driver for the Linux PHC (Processor Hardware Control) project by David Gaarenstroom <david.gaarenstroom@gmail.com>.
+
+
+0. Disclaimer:
+==============
+Undervolting your processor too much can freeze your computer and thus may harm your data. Use it at your own risk.
+
+
+1. Processor types supported by this driver:
+============================================
+For AMD processors, there are (as of this writing) two types of processors that can be undervolted:
+1. AMD K8 based processors with a single frequency/voltage CPU register. Examples of these kind of processors are AMD Athlon and AMD Neo processors. If /proc/cpuinfo enlists your processor(s) with a cpu_family less than 16, then your processor is from this category.
+2. AMD K10 based processors with "Hardware Power State" registers. Examples of these kind of processors are AMD Phenom and AMD Turion X2 processors. If /proc/cpuinfo enlists your processor(s) with a cpu_family equal to 16 or 17, then your processor is from this category.
+
+So even though the regular driver for AMD processors is called "powernow-k8" and this driver is called "phc-k8", these drivers supports both K8 and K10 processors!
+
+K8 undervolting has been supported for a while and offers more features than K10 undervolting does at the moment. K10 support is still a bit immature.
+
+
+2. Installation:
+================
+The driver can be installed in two different ways, either by using "DKMS" or manually.
+
+2.a DKMS installation:
+----------------------
+"DKMS" installation is the easiest way of installing. All you'll have to do is:
+o Install "dkms" for your Linux distribution.
+o Run "make dkms_install" as root:
+    sudo make dkms_install
+
+2.b Manual installation:
+------------------------
+You will need at least the kernel headers for the kernel you are using. You can easily verify whether there is a directory that /lib/modules/<kernel version>/build points to:
+  ls /lib/modules/`uname -r`/build/
+If there is no such directory, you probably have to use your package manager to install "linux-headers" or something similar.
+
+As a normal user, run:
+  make clean && make
+
+Then run "make install" as root:
+  sudo make install
+
+You may want to edit /etc/modprobe.d/phc-k8 to let the driver use direct_transitions (explained in "Usage").
+
+
+3. Usage:
+=========
+For AMD processors internally different terms are used instead of frequencies and voltages. Therefore the PHC-K8 driver uses "fid" instead of a frequency and "vid" instead of voltage. For AMD processors, a higher fid represents a higher frequency, while a higher vid is normally associated with a *lower* voltage.
+
+To convert between frequency and fid for K8 based processors, this formula can be used:
+frequency = 800MHz + (100MHz * fid)
+fid = (frequency/100MHz) - 8
+
+To convert between voltage and vid for K8 based processors, you will need to know what type of processor you have. 
+For desktop K8 based processors, to calculate the voltage it is most likely you will need to use:
+millivolts = 1550 - 25*vid
+
+For mobile K8 based processors this formula seems to be the right one instead:
+millivolts = 1450 - 25*vid
+
+E.g.:
+AMD X2 processor:
+vid = 16	=> voltage = 1550 - 25 * 16 = 1150mV
+Vid = 24	=> voltage = 1550 - 25 * 24 =  950mV
+Turion 64 processor:
+vid =  4	=> voltage = 1450 - 25 *  4 = 1350mV
+Vid = 22	=> voltage = 1450 - 25 * 22 =  900mV
+
+For K10 based processors, the fid-to-frequency formula is a lot more complicated, but since only vids can be changed for these processors, it is not listed here.
+For vids, this formula seems to be the correct one for K10 processors:
+If vid < 32:
+	millivolts = 1550 - 25*vid
+If vid >= 32:
+	millivolts = 1162.5 - 12.5*(vid)
+
+The phc-k8 driver can be used in three modes:
+a) Native K8 based processor undervolting.
+b) Relaxed K8 mode with direct transitions enabled (using "direct_transitions=1" as module option for the phc-k8 driver).
+c) K10 based processor undervolting.
+
+3.a Native powernow-k8 mode:
+----------------------------
+In native powernow-k8 mode, the voltages for each fid can be changed. This can be done either by using phc_vids or phc_controls in /sys/devices/system/cpu/cpu<number>/cpufreq/. The default vids can always be found in phc_default_vids, the default controls in phc_default_controls
+E.g.:
+~# cat /sys/devices/system/cpu/cpu0/cpufreq/phc_vids
+4 6 22
+~# cat /sys/devices/system/cpu/cpu0/cpufreq/phc_controls
+10:4 8:6 0:22
+~# echo '10 14 24' > /sys/devices/system/cpu/cpu0/cpufreq/phc_vids
+~# cat /sys/devices/system/cpu/cpu0/cpufreq/phc_vids
+10 14 24
+~# cat /sys/devices/system/cpu/cpu0/cpufreq/phc_controls
+10:10 8:14 0:24
+~# cat /sys/devices/system/cpu/cpu0/cpufreq/phc_default_vids
+4 6 22
+~# cat /sys/devices/system/cpu/cpu0/cpufreq/phc_default_controls
+10:4 8:6 0:22
+
+3.b Relaxed powernow-k8 mode with direct transitions enabled:
+-------------------------------------------------------------
+In "direct transitions" mode, not only the vids can be changed, but the available frequencies as well. Especially for Laptop owners, this is really great! In fact, any frequency between the maximum frequency of the processor down to its minimum can be used, with steps of 100MHz. By default, only the frequencies supported by default are enabled. "Direct transitions" technically mean that during frequency transitions the driver jumps straight to the new frequency, instead of applying an algorithm to move gradually towards it. This enables the driver to choose any fid the processors' minimum and the processors' maximum.
+
+Look into /sys/devices/system/cpu/cpu<number>/cpufreq/phc_available_fids to see what fids are available in either mode.
+To change the sets of frequencies/voltages, the best interface to use is:
+/sys/devices/system/cpu/cpu<number>/cpufreq/phc_controls
+E.g.:
+~# cat /sys/devices/system/cpu/cpu0/cpufreq/phc_controls
+10:4 8:6 0:22
+~# echo '10:10 8:14 2:22 0:24' > /sys/devices/system/cpu/cpu0/cpufreq/phc_controls
+~# cat /sys/devices/system/cpu/cpu0/cpufreq/phc_controls
+10:10 8:14 2:22 0:24
+~# cat /sys/devices/system/cpu/cpu0/cpufreq/phc_default_controls
+10:4 8:6 0:22
+
+3.c K10 based processors undervolting:
+--------------------------------------
+Unfortunately K10 undervolting does not offer as many features as K8 undervolting. Only phc_vids in /sys/devices/system/cpu/cpu<number>/cpufreq/ is available for undervolting. The default vids can always be found in phc_default_vids
+E.g.:
+~# cat /sys/devices/system/cpu/cpu0/cpufreq/phc_vids
+38 42 58
+~# echo '40 48 64' > /sys/devices/system/cpu/cpu0/cpufreq/phc_vids
+~# cat /sys/devices/system/cpu/cpu0/cpufreq/phc_vids
+40 48 64
+~# cat /sys/devices/system/cpu/cpu0/cpufreq/phc_default_vids
+38 42 58
+
+
+4. Tips & tricks:
+=================
+o To restore the driver to default settings, you can use:
+--8<--
+  for dir in cat /sys/devices/system/cpu/cpu*/cpufreq/; do
+      cat "$dir"/phc_default_controls > $dir"/phc_controls
+  done
+--8<--
+Or for K10 based processors you can use:
+--8<--
+  for dir in cat /sys/devices/system/cpu/cpu*/cpufreq/; do
+      cat "$dir"/phc_default_vids > $dir"/phc_vids
+  done
+--8<--
+o On K8 based mobile processors, if the lowest supported frequency is 800MHz, setting 1000MHz as the lowest frequency can be quite a performance enhancement at the cost of very little extra power consumption. Using a tool like "laptop-mode", you can set the minimum frequency to 800MHz when running on battery and 1000MHz when running on mains.
+o For Black Edition processors, use "be_maxfid" to override. This ONLY works with direct_transitions enabled. As there are no known safe VID values, the higher fids need to be enabled through phc_controls with a proper FID:VID pair.
+o My AMD X2 5600+ processor could not run at a frequency lower than its minimum (1000MHz) so in the progress of developing this driver I disabled access to a fid lower than a processors minimum. If you feel lucky, you can try and add "min_800MHz=1" to the module options (along with direct_transitions) to enable 800MHz and 900MHz in such a case. Please send me your findings (did this work or not) if you want to support the development of this driver, along with the processor type you have.
