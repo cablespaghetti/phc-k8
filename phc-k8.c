@@ -48,9 +48,7 @@
 #include <linux/delay.h>
 
 #include <asm/msr.h>
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,4,0)
 #include <asm/cpu_device_id.h>
-#endif
 
 #include <linux/acpi.h>
 #include <linux/mutex.h>
@@ -80,10 +78,8 @@ static DEFINE_PER_CPU(struct powernow_k8_data *, powernow_data);
 static int cpu_family = CPU_OPTERON;
 
 /* Various fixups for different kernels */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,8,0)
 #define __devexit
 #define __devexit_p(a)	a
-#endif
 
 /* core performance boost */
 static bool cpb_capable, cpb_enabled;
@@ -526,7 +522,6 @@ static int core_voltage_post_transition(struct powernow_k8_data *data,
 	return 0;
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,4,0)
 static const struct x86_cpu_id powernow_k8_ids[] = {
 	/* IO based frequency switching */
 	{ X86_VENDOR_AMD, 0xf },
@@ -535,7 +530,6 @@ static const struct x86_cpu_id powernow_k8_ids[] = {
 	{}
 };
 MODULE_DEVICE_TABLE(x86cpu, powernow_k8_ids);
-#endif
 
 static void check_supported_cpu(void *_rc)
 {
@@ -544,17 +538,7 @@ static void check_supported_cpu(void *_rc)
 
 	*rc = -ENODEV;
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,4,0)
-	if (__this_cpu_read(cpu_info.x86_vendor) != X86_VENDOR_AMD)
-		return;
-#endif
-
 	eax = cpuid_eax(CPUID_PROCESSOR_SIGNATURE);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,4,0)
-	if (((eax & CPUID_XFAM) != CPUID_XFAM_K8) &&
-	    ((eax & CPUID_XFAM) < CPUID_XFAM_10H))
-		return;
-#endif
 	if ((eax & CPUID_XFAM) == CPUID_XFAM_K8) {
 		if (((eax & CPUID_USE_XFAM_XMOD) != CPUID_USE_XFAM_XMOD) ||
 		    ((eax & CPUID_XMOD) > CPUID_XMOD_REV_MASK)) {
@@ -676,11 +660,7 @@ static void print_basics(struct powernow_k8_data *data)
 	for (j = 0; j < data->numps; j++) {
 		if (data->powernow_table[j].frequency !=
 				CPUFREQ_ENTRY_INVALID) {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0)
 			unsigned driver_data = data->powernow_table[j].driver_data;
-#else
-			unsigned driver_data = data->powernow_table[j].index;
-#endif
 			if (cpu_family == CPU_HW_PSTATE) {
 				pr_info("   %d : pstate %d (%d MHz), vid 0x%x\n",
 					j, driver_data & HW_PSTATE_MASK,
@@ -733,22 +713,13 @@ static int fill_powernow_table(struct powernow_k8_data *data,
 
 	for (j = 0; j < data->numps; j++) {
 		int freq;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0)
 		powernow_table[j].driver_data = pst[j].fid; /* lower 8 bits */
 		powernow_table[j].driver_data |= (pst[j].vid << 8); /* upper 8 bits */
-#else
-		powernow_table[j].index = pst[j].fid; /* lower 8 bits */
-		powernow_table[j].index |= (pst[j].vid << 8); /* upper 8 bits */
-#endif
 		freq = find_khz_freq_from_fid(pst[j].fid);
 		powernow_table[j].frequency = freq;
 	}
 	powernow_table[data->numps].frequency = CPUFREQ_TABLE_END;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0)
 	powernow_table[data->numps].driver_data = 0;
-#else
-	powernow_table[data->numps].index = 0;
-#endif
 
 	if (query_current_values_with_pending_wait(data)) {
 		kfree(powernow_table);
@@ -958,11 +929,7 @@ static int powernow_k8_cpu_init_acpi(struct powernow_k8_data *data)
 		goto err_out_mem;
 
 	powernow_table[numps].frequency = CPUFREQ_TABLE_END;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0)
 	powernow_table[numps].driver_data = 0;
-#else
-	powernow_table[numps].index = 0;
-#endif
 	data->powernow_table = powernow_table;
 
 	if (cpumask_first(topology_core_cpumask(data->cpu)) == data->cpu)
@@ -1048,11 +1015,7 @@ static int fill_powernow_table_pstate(struct powernow_k8_data *data,
 			powernow_table[i].frequency =
 				data->acpi_data.states[i].core_frequency * 1000;
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0)
 		powernow_table[i].driver_data = index | (lo << 16);
-#else
-		powernow_table[i].index = index | (lo << 16);
-#endif
 	}
 	return 0;
 }
@@ -1081,11 +1044,7 @@ static int fill_powernow_table_fidvid(struct powernow_k8_data *data,
 		pr_debug("   %d : fid 0x%x, vid 0x%x\n", i, fid, vid);
 
 		index = fid | (vid<<8);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0)
 		powernow_table[i].driver_data = index;
-#else
-		powernow_table[i].index = index;
-#endif
 
 		freq = find_khz_freq_from_fid(fid);
 		powernow_table[i].frequency = freq;
@@ -1150,13 +1109,8 @@ static int fill_powernow_table_fidvid_dt(struct powernow_k8_data *data,
 
 		pr_debug("   %d : fid 0x%x, vid 0x%x\n", i, fid, vid);
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0)
 		powernow_table[i].driver_data = (fid & 0xFF)
 				|((vid & 0xFF) << 8);
-#else
-		powernow_table[i].index = (fid & 0xFF)
-				|((vid & 0xFF) << 8);
-#endif
 
 		/* For now, mark all entries not in the acpi_data.states as invalid */
 		if (acpi_fid == fid) {
@@ -1228,11 +1182,7 @@ static int get_transition_latency(struct powernow_k8_data *data)
 static int transition_frequency_fidvid(struct powernow_k8_data *data,
 		unsigned int index)
 {
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
-	int i;
-#else
 	struct cpufreq_policy *policy;
-#endif
 	u32 fid = 0;
 	u32 vid = 0;
 	int res;
@@ -1245,13 +1195,8 @@ static int transition_frequency_fidvid(struct powernow_k8_data *data,
 	 * the cpufreq frequency table in find_psb_table, vid
 	 * are the upper 8 bits.
 	 */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0)
 	fid = data->powernow_table[index].driver_data & 0xFF;
 	vid = (data->powernow_table[index].driver_data & 0xFF00) >> 8;
-#else
-	fid = data->powernow_table[index].index & 0xFF;
-	vid = (data->powernow_table[index].index & 0xFF00) >> 8;
-#endif
 
 	pr_debug("table matched fid 0x%x, giving vid 0x%x\n", fid, vid);
 
@@ -1269,35 +1214,14 @@ static int transition_frequency_fidvid(struct powernow_k8_data *data,
 	freqs.old = find_khz_freq_from_fid(data->currfid);
 	freqs.new = find_khz_freq_from_fid(fid);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
-	for_each_cpu(i, data->available_cores) {
-		freqs.cpu = i;
-		cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
-	}
-#else
 	policy = cpufreq_cpu_get(smp_processor_id());
 	cpufreq_cpu_put(policy);
-
-# if LINUX_VERSION_CODE < KERNEL_VERSION(3,15,0)
-	cpufreq_notify_transition(policy, &freqs, CPUFREQ_PRECHANGE);
-# else
 	cpufreq_freq_transition_begin(policy, &freqs);
-# endif
-#endif
 	
 	res = transition_fid_vid(data, fid, vid);
 	freqs.new = find_khz_freq_from_fid(data->currfid);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
-	for_each_cpu(i, data->available_cores) {
-		freqs.cpu = i;
-		cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
-	}
-#elif LINUX_VERSION_CODE < KERNEL_VERSION(3,15,0)
-	cpufreq_notify_transition(policy, &freqs, CPUFREQ_POSTCHANGE);
-#else
 	cpufreq_freq_transition_end(policy, &freqs, res);
-#endif
 
 	return res;
 }
@@ -1306,11 +1230,7 @@ static int transition_frequency_fidvid(struct powernow_k8_data *data,
 static int transition_frequency_pstate(struct powernow_k8_data *data,
 		unsigned int index)
 {
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
-	int i;
-#else
 	struct cpufreq_policy *policy;
-#endif
 	u32 pstate = 0;
 	int res;
 	struct cpufreq_freqs freqs;
@@ -1326,35 +1246,14 @@ static int transition_frequency_pstate(struct powernow_k8_data *data,
 			data->currpstate);
 	freqs.new = find_khz_freq_from_pstate(data->powernow_table, pstate);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
-	for_each_cpu(i, data->available_cores) {
-		freqs.cpu = i;
-		cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
-	}
-#else
 	policy = cpufreq_cpu_get(smp_processor_id());
 	cpufreq_cpu_put(policy);
-
-# if LINUX_VERSION_CODE < KERNEL_VERSION(3,15,0)
-	cpufreq_notify_transition(policy, &freqs, CPUFREQ_PRECHANGE);
-# else
 	cpufreq_freq_transition_begin(policy, &freqs);
-# endif
-#endif
 
 	res = transition_pstate(data, pstate);
 	freqs.new = find_khz_freq_from_pstate(data->powernow_table, pstate);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
-	for_each_cpu(i, data->available_cores) {
-		freqs.cpu = i;
-		cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
-	}
-#elif LINUX_VERSION_CODE < KERNEL_VERSION(3,15,0)
-	cpufreq_notify_transition(policy, &freqs, CPUFREQ_POSTCHANGE);
-#else
 	cpufreq_freq_transition_end(policy, &freqs, res);
-#endif
 	return res;
 }
 
@@ -1492,9 +1391,6 @@ static int __cpuinit powernowk8_cpu_init(struct cpufreq_policy *pol)
 	struct powernow_k8_data *data;
 	struct init_on_cpu init_on_cpu;
 	int rc;
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,12,0)
-	struct cpuinfo_x86 *c = &cpu_data(pol->cpu);
-#endif
 
 	smp_call_function_single(pol->cpu, check_supported_cpu, &rc, 1);
 	if (rc)
@@ -1546,27 +1442,8 @@ static int __cpuinit powernowk8_cpu_init(struct cpufreq_policy *pol)
 		cpumask_copy(pol->cpus, topology_core_cpumask(pol->cpu));
 	data->available_cores = pol->cpus;
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
-	if (cpu_family == CPU_HW_PSTATE)
-		pol->cur = find_khz_freq_from_pstate(data->powernow_table,
-				data->currpstate);
-	else
-		pol->cur = find_khz_freq_from_fid(data->currfid);
-	pr_debug("policy current frequency %d kHz\n", pol->cur);
-#endif
-
-        pol->freq_table = data->powernow_table_default;
-        pol->freq_table = data->powernow_table;
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,12,0)
-	/* Check for APERF/MPERF support in hardware */
-	if (cpu_has(c, X86_FEATURE_APERFMPERF))
-		cpufreq_amd64_driver.getavg = cpufreq_get_measured_perf;
-#endif
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
-	cpufreq_frequency_table_get_attr(data->powernow_table, pol->cpu);
-#endif
+	pol->freq_table = data->powernow_table_default;
+	pol->freq_table = data->powernow_table;
 
 	if (cpu_family == CPU_HW_PSTATE)
 		pr_debug("cpu_init done, current pstate 0x%x\n",
@@ -1599,10 +1476,6 @@ static int __devexit powernowk8_cpu_exit(struct cpufreq_policy *pol)
 		return -EINVAL;
 
 	powernow_k8_cpu_exit_acpi(data);
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,15,0)
-	cpufreq_frequency_table_put_attr(pol->cpu);
-#endif
 
 	kfree(data->powernow_table_default);
 	kfree(data->powernow_table);
@@ -1637,13 +1510,8 @@ static int powernowk8_apply_settings(struct cpufreq_policy *pol) {
 			u32 hi, lo;
 			rdmsr(hwpstate_base + i, lo, hi);
 			lo &= ~(HW_PSTATE_VID_MASK);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0)
 			lo |= ((data->powernow_table[i].driver_data >> 16) \
 				& HW_PSTATE_VID_MASK);
-#else
-			lo |= ((data->powernow_table[i].index >> 16) \
-				& HW_PSTATE_VID_MASK);
-#endif
 			wrmsr(hwpstate_base + i, lo, hi);
 		}
 	}
@@ -1708,13 +1576,8 @@ show_controls(struct cpufreq_frequency_table *table, int entries, char *buf)
 
 	for (j = first_valid_entry(table, 0); j < entries; 
 	     j = first_valid_entry(table, j + 1)) {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0)
 		unsigned int fid = table[j].driver_data & 0xff;
 		unsigned int vid = (table[j].driver_data >> 8) & 0xff;
-#else
-		unsigned int fid = table[j].index & 0xff;
-		unsigned int vid = (table[j].index >> 8) & 0xff;
-#endif
 		count += snprintf(&buf[count], PAGE_SIZE - count, "%u:%u ", fid, vid);
 	}
 	if (count > 0) {
@@ -1777,11 +1640,7 @@ store_phc_controls(struct cpufreq_policy *pol, const char *buf, size_t count)
 		/* lookup matching fid in the existing powernow table and
 		   mark prepending entries as invalid */
 		while (
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0)
 			fid < (data->powernow_table[entry].driver_data & 0xFF)
-#else
-			fid < (data->powernow_table[entry].index & 0xFF)
-#endif
 			&& entry < data->numps) {
 			data->powernow_table[entry].frequency = CPUFREQ_ENTRY_INVALID;
 			entry++;
@@ -1793,21 +1652,13 @@ store_phc_controls(struct cpufreq_policy *pol, const char *buf, size_t count)
 		/* If the supplied frequency cannot be found in the frequencies
 		   table, then print an error, but still continue */
 		else if (
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0)
 			fid != (data->powernow_table[entry].driver_data & 0xFF)
-#else
-			fid != (data->powernow_table[entry].index & 0xFF)
-#endif
 		) {
 			pr_err("invalid fid value %lu\n", fid);
 			continue;
 		}
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0)
 		data->powernow_table[entry].driver_data = (fid & 0xFF)|((vid & 0xFF) << 8);
-#else
-		data->powernow_table[entry].index = (fid & 0xFF)|((vid & 0xFF) << 8);
-#endif
 		data->powernow_table[entry].frequency = (vid <= LEAST_VID)
 				? find_khz_freq_from_fid(fid)
 				: CPUFREQ_ENTRY_INVALID;
@@ -1831,10 +1682,6 @@ store_phc_controls(struct cpufreq_policy *pol, const char *buf, size_t count)
 
 	/* Recalculate the min/max frequencies */
 	cpufreq_frequency_table_cpuinfo(pol, data->powernow_table);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
-	/* Publish our new cpufreq frequency table to the cpufreq subsystem */
-	cpufreq_frequency_table_get_attr(data->powernow_table, pol->cpu);
-#endif
 	/* Print basic info on our fresh settings */
 	print_basics(data);
 	/* Start using new fid/vid table */
@@ -1851,11 +1698,7 @@ show_fids(struct cpufreq_frequency_table *table, int entries, char *buf)
 
 	for (j = first_valid_entry(table, 0); j < entries; 
 	     j = first_valid_entry(table, j + 1)) {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0)
 		unsigned int fid = table[j].driver_data & 0xff;
-#else
-		unsigned int fid = table[j].index & 0xff;
-#endif
 		count += snprintf(&buf[count], PAGE_SIZE - count, "%u ", fid);
 	}
 	if (count > 0) {
@@ -1872,11 +1715,7 @@ static ssize_t show_phc_available_fids(struct cpufreq_policy *pol, char *buf)
 	int j;
 
 	for (j = 0; j < data->numps; j++) {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0)
 		unsigned int fid = data->powernow_table[j].driver_data & 0xff;
-#else
-		unsigned int fid = data->powernow_table[j].index & 0xff;
-#endif
 		count += snprintf(&buf[count], PAGE_SIZE - count, "%u ", fid);
 	}
 	if (count > 0) {
@@ -1922,11 +1761,7 @@ store_phc_fids(struct cpufreq_policy *pol, const char *buf, size_t count)
 		/* lookup matching fid in the existing powernow table and
 		   mark prepending entries as invalid */
 		while (entry < data->numps
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0)
 			&& fid < (data->powernow_table[entry].driver_data & 0xFF)
-#else
-			&& fid < (data->powernow_table[entry].index & 0xFF)
-#endif
 		) {
 			data->powernow_table[entry].frequency = CPUFREQ_ENTRY_INVALID;
 			entry++;
@@ -1938,23 +1773,14 @@ store_phc_fids(struct cpufreq_policy *pol, const char *buf, size_t count)
 		/* If the supplied frequency cannot be found in the frequencies
 		   table, then print an error, but still continue */
 		else if (
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0)
 			fid != (data->powernow_table[entry].driver_data & 0xFF)
-#else
-			fid != (data->powernow_table[entry].index & 0xFF)
-#endif
 		) {
 			pr_err("invalid fid value %lu\n", fid);
 			continue;
 		}
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0)
 		vid = (data->powernow_table[entry].driver_data >> 8) & 0xFF;
 		data->powernow_table[entry].driver_data = (fid & 0xFF)|((vid & 0xFF) << 8);
-#else
-		vid = (data->powernow_table[entry].index >> 8) & 0xFF;
-		data->powernow_table[entry].index = (fid & 0xFF)|((vid & 0xFF) << 8);
-#endif
 		data->powernow_table[entry].frequency = (vid <= LEAST_VID)
 				? find_khz_freq_from_fid(fid)
 				: CPUFREQ_ENTRY_INVALID;
@@ -1978,10 +1804,6 @@ store_phc_fids(struct cpufreq_policy *pol, const char *buf, size_t count)
 
 	/* Recalculate the min/max frequencies */
 	cpufreq_frequency_table_cpuinfo(pol, data->powernow_table);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
-	/* Publish our new cpufreq frequency table to the cpufreq subsystem */
-	cpufreq_frequency_table_get_attr(data->powernow_table, pol->cpu);
-#endif
 	/* Print basic info on our fresh settings */
 	print_basics(data);
 	/* Start using new fid/vid table */
@@ -1999,19 +1821,11 @@ static ssize_t show_vids(struct cpufreq_frequency_table *table, int entries,
 		unsigned int vid;
 
 		if (cpu_family != CPU_HW_PSTATE) {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0)
 			vid = (table[j].driver_data >> 8) & 0xff;
-#else
-			vid = (table[j].index >> 8) & 0xff;
-#endif
 			if (table[j].frequency != CPUFREQ_ENTRY_INVALID && vid <= LEAST_VID)
 				count += snprintf(&buf[count], PAGE_SIZE - count, "%u ", vid);
 		} else {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0)
 			vid = cpufreqtable_index_to_vid(table[j].driver_data);
-#else
-			vid = cpufreqtable_index_to_vid(table[j].index);
-#endif
 			if (table[j].frequency != CPUFREQ_ENTRY_INVALID
 				&& (vid == (vid & 0x7f)))
 				count += snprintf(&buf[count], PAGE_SIZE - count, "%u ", vid);
@@ -2091,13 +1905,8 @@ store_phc_vids(struct cpufreq_policy *pol, const char *buf, size_t count)
 		if (cpu_family != CPU_HW_PSTATE) {
 			/* Least vid is actually the highest value allowed */
 			if (vid <= LEAST_VID || vid == VID_OFF) {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0)
 				u32 fid = data->powernow_table[i].driver_data & 0xFF;
 				data->powernow_table[i].driver_data = fid | ((vid & 0xFF) << 8);
-#else
-				u32 fid = data->powernow_table[i].index & 0xFF;
-				data->powernow_table[i].index = fid | ((vid & 0xFF) << 8);
-#endif
 				data->powernow_table[i].frequency = (vid <= LEAST_VID)
 					? find_khz_freq_from_fid(fid)
 					: CPUFREQ_ENTRY_INVALID;
@@ -2107,17 +1916,10 @@ store_phc_vids(struct cpufreq_policy *pol, const char *buf, size_t count)
 			}
 		} else {
 			if (vid == (vid & 0x7f)) {
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0)
 				u32 mask = (data->powernow_table[i].driver_data \
 						& ~(HW_PSTATE_VID_MASK << 16));
 				data->powernow_table[i].driver_data = mask | \
 						((vid << HW_PSTATE_VID_SHIFT) & HW_PSTATE_VID_MASK) << 16;
-#else
-				u32 mask = (data->powernow_table[i].index \
-						& ~(HW_PSTATE_VID_MASK << 16));
-				data->powernow_table[i].index = mask | \
-						((vid << HW_PSTATE_VID_SHIFT) & HW_PSTATE_VID_MASK) << 16;
-#endif
 			} else {
 				pr_err("vid value %i is out of bounds: %lu\n", i, vid);
 					vid = VID_OFF;
@@ -2264,9 +2066,6 @@ static struct cpufreq_driver cpufreq_amd64_driver = {
 #endif
 	.get		= powernowk8_get,
 	.name		= "phc-k8",
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,12,0)
-	.owner		= THIS_MODULE,
-#endif
 	.attr		= powernow_k8_attr,
 };
 
@@ -2317,10 +2116,8 @@ static int __cpuinit powernowk8_init(void)
 	unsigned int i, supported_cpus = 0, cpu;
 	int ret;
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,4,0)
 	if (!x86_match_cpu(powernow_k8_ids))
 		return -ENODEV;
-#endif
 
 	get_online_cpus();
 	for_each_online_cpu(i) {
