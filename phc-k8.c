@@ -91,13 +91,6 @@ static struct msr __percpu *msrs;
 
 static struct cpufreq_driver cpufreq_amd64_driver;
 
-#ifndef CONFIG_SMP
-static inline const struct cpumask *cpu_core_mask(int cpu)
-{
-	return cpumask_of(0);
-}
-#endif
-
 /* Return a frequency in MHz, given an input fid */
 static inline u32 find_freq_from_fid(u32 fid)
 {
@@ -735,10 +728,8 @@ static int fill_powernow_table(struct powernow_k8_data *data,
 
 	powernow_table = kzalloc((sizeof(*powernow_table)
 		* (data->numps + 1)), GFP_KERNEL);
-	if (!powernow_table) {
-		pr_err("powernow_table memory alloc failure\n");
+	if (!powernow_table)
 		return -ENOMEM;
-	}
 
 	for (j = 0; j < data->numps; j++) {
 		int freq;
@@ -766,7 +757,7 @@ static int fill_powernow_table(struct powernow_k8_data *data,
 
 	pr_debug("cfid 0x%x, cvid 0x%x\n", data->currfid, data->currvid);
 	data->powernow_table = powernow_table;
-	if (cpumask_first(cpu_core_mask(data->cpu)) == data->cpu)
+	if (cpumask_first(topology_core_cpumask(data->cpu)) == data->cpu)
 		print_basics(data);
 
 	for (j = 0; j < data->numps; j++)
@@ -950,10 +941,8 @@ static int powernow_k8_cpu_init_acpi(struct powernow_k8_data *data)
 	/* fill in data->powernow_table */
 	table_size = sizeof(struct cpufreq_frequency_table) * (numps + 1);
 	powernow_table = kzalloc(table_size, GFP_KERNEL);
-	if (!powernow_table) {
-		pr_debug("powernow_table memory alloc failure\n");
+	if (!powernow_table)
 		goto err_out;
-	}
 
 	/* fill in data */
 	data->numps = numps;
@@ -976,7 +965,7 @@ static int powernow_k8_cpu_init_acpi(struct powernow_k8_data *data)
 #endif
 	data->powernow_table = powernow_table;
 
-	if (cpumask_first(cpu_core_mask(data->cpu)) == data->cpu)
+	if (cpumask_first(topology_core_cpumask(data->cpu)) == data->cpu)
 		print_basics(data);
 
 	/* save default table */
@@ -1005,7 +994,7 @@ err_out_mem:
 	kfree(powernow_table);
 
 err_out:
-	acpi_processor_unregister_performance(&data->acpi_data, data->cpu);
+	acpi_processor_unregister_performance(data->cpu);
 
 	/* data->acpi_data.state_count informs us at ->exit()
 	 * whether ACPI was used */
@@ -1206,8 +1195,7 @@ static int fill_powernow_table_fidvid_dt(struct powernow_k8_data *data,
 static void powernow_k8_cpu_exit_acpi(struct powernow_k8_data *data)
 {
 	if (data->acpi_data.state_count)
-		acpi_processor_unregister_performance(&data->acpi_data,
-				data->cpu);
+		acpi_processor_unregister_performance(data->cpu);
 	free_cpumask_var(data->acpi_data.shared_cpu_map);
 }
 
@@ -1513,10 +1501,8 @@ static int __cpuinit powernowk8_cpu_init(struct cpufreq_policy *pol)
 		return -ENODEV;
 
 	data = kzalloc(sizeof(struct powernow_k8_data), GFP_KERNEL);
-	if (!data) {
-		pr_err("unable to alloc powernow_k8_data");
+	if (!data)
 		return -ENOMEM;
-	}
 
 	data->cpu = pol->cpu;
 	data->currpstate = HW_PSTATE_INVALID;
@@ -1557,7 +1543,7 @@ static int __cpuinit powernowk8_cpu_init(struct cpufreq_policy *pol)
 	if (cpu_family == CPU_HW_PSTATE)
 		cpumask_copy(pol->cpus, cpumask_of(pol->cpu));
 	else
-		cpumask_copy(pol->cpus, cpu_core_mask(pol->cpu));
+		cpumask_copy(pol->cpus, topology_core_cpumask(pol->cpu));
 	data->available_cores = pol->cpus;
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
@@ -1569,20 +1555,8 @@ static int __cpuinit powernowk8_cpu_init(struct cpufreq_policy *pol)
 	pr_debug("policy current frequency %d kHz\n", pol->cur);
 #endif
 
-	/* min/max the cpu is capable of */
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
-	if (cpufreq_frequency_table_cpuinfo(pol, data->powernow_table))
-#else
-	if (cpufreq_table_validate_and_show(pol, data->powernow_table))
-#endif
-	{
-		pr_err(FW_BUG "invalid powernow_table\n");
-		powernow_k8_cpu_exit_acpi(data);
-		kfree(data->powernow_table_default);
-		kfree(data->powernow_table);
-		kfree(data);
-		return -EINVAL;
-	}
+        pol->freq_table = data->powernow_table_default;
+        pol->freq_table = data->powernow_table;
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,12,0)
 	/* Check for APERF/MPERF support in hardware */
