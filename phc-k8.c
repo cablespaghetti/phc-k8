@@ -1261,18 +1261,19 @@ struct powernowk8_target_arg {
 	struct cpufreq_policy		*pol;
 	unsigned			targfreq;
 	unsigned			relation;
+	unsigned			newstate;
 };
 
 static long powernowk8_target_fn(void *arg)
 {
 	struct powernowk8_target_arg *pta = arg;
 	struct cpufreq_policy *pol = pta->pol;
+	unsigned int newstate = pta->newstate;
 	unsigned targfreq = pta->targfreq;
 	unsigned relation = pta->relation;
 	struct powernow_k8_data *data = per_cpu(powernow_data, pol->cpu);
 	u32 checkfid;
 	u32 checkvid;
-	unsigned int newstate;
 	int ret;
 
 	if (!data)
@@ -1679,8 +1680,6 @@ store_phc_controls(struct cpufreq_policy *pol, const char *buf, size_t count)
 	for (;entry < data->numps; entry++)
 		data->powernow_table[entry].frequency = CPUFREQ_ENTRY_INVALID;
 
-	/* Recalculate the min/max frequencies */
-	cpufreq_frequency_table_cpuinfo(pol, data->powernow_table);
 	/* Print basic info on our fresh settings */
 	print_basics(data);
 	/* Start using new fid/vid table */
@@ -1801,8 +1800,6 @@ store_phc_fids(struct cpufreq_policy *pol, const char *buf, size_t count)
 	for (;entry < data->numps; entry++)
 		data->powernow_table[entry].frequency = CPUFREQ_ENTRY_INVALID;
 
-	/* Recalculate the min/max frequencies */
-	cpufreq_frequency_table_cpuinfo(pol, data->powernow_table);
 	/* Print basic info on our fresh settings */
 	print_basics(data);
 	/* Start using new fid/vid table */
@@ -2068,47 +2065,6 @@ static struct cpufreq_driver cpufreq_amd64_driver = {
 	.attr		= powernow_k8_attr,
 };
 
-/*
- * Clear the boost-disable flag on the CPU_DOWN path so that this cpu
- * cannot block the remaining ones from boosting. On the CPU_UP path we
- * simply keep the boost-disable flag in sync with the current global
- * state.
- */
-static int cpb_notify(struct notifier_block *nb, unsigned long action,
-		      void *hcpu)
-{
-	unsigned cpu = (long)hcpu;
-	u32 lo, hi;
-
-	switch (action) {
-	case CPU_UP_PREPARE:
-	case CPU_UP_PREPARE_FROZEN:
-
-		if (!cpb_enabled) {
-			rdmsr_on_cpu(cpu, MSR_K7_HWCR, &lo, &hi);
-			lo |= BIT(25);
-			wrmsr_on_cpu(cpu, MSR_K7_HWCR, lo, hi);
-		}
-		break;
-
-	case CPU_DOWN_PREPARE:
-	case CPU_DOWN_PREPARE_FROZEN:
-		rdmsr_on_cpu(cpu, MSR_K7_HWCR, &lo, &hi);
-		lo &= ~BIT(25);
-		wrmsr_on_cpu(cpu, MSR_K7_HWCR, lo, hi);
-		break;
-
-	default:
-		break;
-	}
-
-	return NOTIFY_OK;
-}
-
-static struct notifier_block cpb_nb = {
-	.notifier_call		= cpb_notify,
-};
-
 /* driver entry point for init */
 static int powernowk8_init(void)
 {
@@ -2143,8 +2099,6 @@ static int powernowk8_init(void)
 			return -ENOMEM;
 		}
 
-		register_cpu_notifier(&cpb_nb);
-
 		rdmsr_on_cpus(cpu_online_mask, MSR_K7_HWCR, msrs);
 
 		for_each_cpu(cpu, cpu_online_mask) {
@@ -2159,7 +2113,6 @@ static int powernowk8_init(void)
 	
 	ret = cpufreq_register_driver(&cpufreq_amd64_driver);
 	if (ret < 0 && boot_cpu_has(X86_FEATURE_CPB)) {
-		unregister_cpu_notifier(&cpb_nb);
 		msrs_free(msrs);
 		msrs = NULL;
 	}
@@ -2174,10 +2127,7 @@ static void __exit powernowk8_exit(void)
 	if (boot_cpu_has(X86_FEATURE_CPB)) {
 		msrs_free(msrs);
 		msrs = NULL;
-
-		unregister_cpu_notifier(&cpb_nb);
 	}
-
 	cpufreq_unregister_driver(&cpufreq_amd64_driver);
 }
 
