@@ -1304,8 +1304,7 @@ static long powernowk8_target_fn(void *arg)
 		}
 	}
 
-	if (cpufreq_frequency_table_target(pol, data->powernow_table,
-				targfreq, relation, &newstate))
+	if (cpufreq_frequency_table_target(pol, targfreq, relation))
 		return -EIO;
 
 	mutex_lock(&fidvid_mutex);
